@@ -1,0 +1,82 @@
+- name: Instalando dependencias - EL
+  yum: name={{ item }} state=present update_cache=yes
+  with_items:
+    - "{{ zabbix_deps_el }}"
+  when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
+
+- name: Instalando dependencias - Debian/Ubuntu
+  apt: name={{ item }} state=present install_recommends=yes update_cache=yes
+  with_items:
+    - "{{ zabbix_deps_deb }}"
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+- name: Adicionando grupo zabbix
+  group: name=zabbix state=present
+
+- name: Adicionando usuario zabbix
+  user: name=zabbix groups=zabbix append=yes
+
+- name: Removendo arquivos fonte anteriores
+  file: path={{item}} state=absent
+  with_items:
+    - /usr/src/zabbix-3.4.6
+    - /usr/src/zabbix-3.4.6.tar.gz
+
+- name: Download do codigo fonte do Zabbix
+  get_url: url={{item.url}}  dest=/usr/src/ validate_certs=no
+  with_items:
+    - { url: "https://sourceforge.net/projects/zabbix/files/ZABBIX%20Latest%20Stable/3.4.6/zabbix-3.4.6.tar.gz" }
+
+- name: Descompactando codigo fonte do Zabbix
+  unarchive:
+    src: /usr/src/zabbix-3.4.6.tar.gz
+    dest: /usr/src
+    remote_src: yes
+
+- name: Preparando agente Zabbix
+  shell: ./configure --prefix=/opt/zabbix_agentd --enable-agent
+  args:
+    chdir: /usr/src/zabbix-3.4.6
+
+- name: Compilando agente Zabbix
+  make: chdir=/usr/src/zabbix-3.4.6 target={{item}}
+  with_items:
+    - install
+
+- name: Configurando permissoes
+  file:
+    path: /opt/zabbix_agentd
+    owner: zabbix
+    group: zabbix
+
+- name: Criando diretorio de logs
+  file:
+    path={{item}}
+    state=directory
+    mode=0775
+    owner=zabbix
+    group=zabbix
+  with_items:
+    - /var/log/zabbix/
+
+- name: Removendo arquivos fonte
+  file: path={{item}} state=absent
+  with_items:
+      - /usr/src/zabbix-3.4.6/*
+      - /usr/src/zabbix-3.4.6.tar.gz
+
+- name: Copiando configuracao do agente Zabbix
+  copy : src=zabbix_agentd.conf dest=/opt/zabbix_agentd/etc/zabbix_agentd.conf  owner=zabbix group=zabbix
+
+- name: Copiando init
+  copy : src=init_debian_ubuntu_centos dest=/etc/init.d/zabbix_agentd mode=a+x
+  when: (ansible_distribution == 'Debian' and ansible_distribution_major_version <= '7') or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version <= '14') or (ansible_os_family == "RedHat" and ansible_distribution_major_version <= "6")
+
+- name: Copiando systemd
+  copy : src=init/systemd/zabbix_agentd.service dest=/lib/systemd/system
+  when: (ansible_os_family == "RedHat" and ansible_distribution_major_version == "7") or (ansible_distribution == 'Debian' and ansible_distribution_major_version >= '8') or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version >= '15')
+
+- name: Reiniciando e configurando servicos
+  service: state=restarted name={{item}} enabled=yes
+  with_items:
+      - zabbix_agentd

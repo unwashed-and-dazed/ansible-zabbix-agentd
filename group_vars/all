@@ -1,0 +1,9 @@
+zabbix_deps_el:
+    - pcre-devel
+    - make
+    - wget
+
+zabbix_deps_deb:
+    - libpcre3-dev
+    - wget
+    - make

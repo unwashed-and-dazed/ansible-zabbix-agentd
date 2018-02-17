@@ -1,0 +1,5 @@
+- name: Zabbix Agent - Pegue um café e ouça https://www.youtube.com/watch?v=_DanDvAfCcs
+  hosts: all
+  remote_user: root
+  roles:
+  - zabbix_agentd
